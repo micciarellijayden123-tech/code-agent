@@ -133,9 +133,7 @@ async function send(){
       const parts = candidate.content.parts || [];
       const fnCall = parts.find(p => p.functionCall);
       if(fnCall){
-        const modelPart = { functionCall: fnCall.functionCall };
-        if(fnCall.thoughtSignature) modelPart.thoughtSignature = fnCall.thoughtSignature;
-        contents.push({ role:'model', parts:[modelPart] });
+        contents.push(candidate.content);
         const code = fnCall.functionCall.args.code || '';
         addTool('RUNNING CODE', code);
         const output = runJS(code);
@@ -146,7 +144,7 @@ async function send(){
       const textPart = parts.find(p => p.text);
       const replyText = textPart ? textPart.text : '(no text reply)';
       addMsg('agent', replyText);
-      contents.push({ role:'model', parts:[{ text: replyText }] });
+      contents.push(candidate.content);
       break;
     }
   } catch(err){
