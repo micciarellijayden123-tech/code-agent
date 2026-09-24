@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forge — standalone coding agent</title>
+<style>
+  :root{
+    --bg:#12151a; --panel:#181c23; --panel2:#1f242c; --border:#2a303a;
+    --text:#e7e4de; --muted:#8b93a1; --accent:#e0a458; --accent2:#5fb3b3;
+    --mono: ui-monospace,"SF Mono",Consolas,monospace; --sans:-apple-system,"Segoe UI",sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);}
+  body{display:flex;flex-direction:column;}
+  header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;gap:10px;flex-shrink:0;flex-wrap:wrap;}
+  header h1{font-size:17px;margin:0;font-weight:600;}
+  header span{color:var(--muted);font-size:13px;}
+  #keybar{padding:10px 20px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-shrink:0;}
+  #keybar input{flex:1;background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px 10px;font-family:var(--mono);font-size:12.5px;}
+  #keybar a{color:var(--accent2);font-size:12.5px;text-decoration:none;white-space:nowrap;}
+  #log{flex:1;overflow-y:auto;padding:20px;max-width:720px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:14px;}
+  .msg{max-width:88%;padding:11px 14px;border-radius:10px;line-height:1.5;font-size:14.5px;white-space:pre-wrap;word-wrap:break-word;}
+  .user{align-self:flex-end;background:var(--accent2);color:#0b1414;}
+  .agent{align-self:flex-start;background:var(--panel2);border:1px solid var(--border);}
+  .tool{align-self:flex-start;max-width:88%;font-family:var(--mono);font-size:12.5px;background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--accent);padding:10px 12px;border-radius:6px;color:var(--muted);overflow-x:auto;}
+  .tool b{color:var(--accent);font-family:var(--sans);font-size:11px;}
+  .tool pre{margin:6px 0 0;white-space:pre-wrap;color:var(--text);}
+  .empty{color:var(--muted);font-size:14px;margin:auto;text-align:center;max-width:380px;}
+  form{display:flex;gap:8px;padding:14px 20px;border-top:1px solid var(--border);max-width:720px;width:100%;margin:0 auto;flex-shrink:0;}
+  textarea{flex:1;resize:none;background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-size:14.5px;max-height:140px;}
+  textarea:focus{outline:2px solid var(--accent);}
+  button{background:var(--accent);color:#1a1206;border:none;border-radius:8px;padding:0 18px;font-weight:600;font-size:14px;cursor:pointer;}
+  button:disabled{opacity:.5;}
+</style>
+</head>
+<body>
+<header><h1>Forge</h1><span>standalone coding agent — runs on your own free Gemini key</span></header>
+<div id="keybar">
+  <input id="apikey" type="password" placeholder="Paste your free Gemini API key here">
+  <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Get a free key →</a>
+</div>
+<div id="log"><div class="empty">Paste a free Gemini API key above (from Google AI Studio, no card needed), then ask Forge to write and run some JavaScript.</div></div>
+<form id="f">
+  <textarea id="input" rows="1" placeholder="What should Forge build?"></textarea>
+  <button id="send">Send</button>
+</form>
+
+<script>
+const log = document.getElementById('log');
+const form = document.getElementById('f');
+const input = document.getElementById('input');
+const sendBtn = document.getElementById('send');
+const keyInput = document.getElementById('apikey');
+keyInput.value = localStorage.getItem('forge_gemini_key') || '';
+keyInput.addEventListener('change', () => localStorage.setItem('forge_gemini_key', keyInput.value.trim()));
+
+let contents = [];
+const SYSTEM = "You are Forge, a coding agent. When asked to build, fix, or demonstrate something, write JavaScript "
+  + "and actually run it with the run_javascript tool before answering. Use console.log to show results. Keep prose short.";
+
+function clearEmpty(){ const e = log.querySelector('.empty'); if(e) e.remove(); }
+function addMsg(role, text){
+  clearEmpty();
+  const d = document.createElement('div');
+  d.className = 'msg ' + role;
+  d.textContent = text;
+  log.appendChild(d); log.scrollTop = log.scrollHeight;
+  return d;
+}
+function addTool(label, body){
+  clearEmpty();
+  const d = document.createElement('div');
+  d.className = 'tool';
+  const b = document.createElement('b'); b.textContent = label;
+  const pre = document.createElement('pre'); pre.textContent = body;
+  d.appendChild(b); d.appendChild(pre);
+  log.appendChild(d); log.scrollTop = log.scrollHeight;
+}
+function runJS(code){
+  const logs = [];
+  const fakeConsole = { log: (...a) => logs.push(a.map(x => typeof x==='object' ? JSON.stringify(x) : String(x)).join(' ')) };
+  try {
+    const ret = new Function('console', code)(fakeConsole);
+    let out = logs.join('\n');
+    if(ret !== undefined) out += (out?'\n':'') + '=> ' + (typeof ret==='object' ? JSON.stringify(ret) : String(ret));
+    return out || '(no output)';
+  } catch(e){ return 'Error: ' + e.message; }
+}
+
+const TOOLS = [{
+  functionDeclarations: [{
+    name: 'run_javascript',
+    description: 'Execute a snippet of JavaScript and return its console output / return value.',
+    parameters: { type:'OBJECT', properties:{ code:{ type:'STRING', description:'JavaScript source to run.' } }, required:['code'] }
+  }]
+}];
+
+async function callGemini(key){
+  const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + encodeURIComponent(key), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents,
+      tools: TOOLS,
+      systemInstruction: { parts: [{ text: SYSTEM }] }
+    })
+  });
+  if(!res.ok){
+    const errText = await res.text();
+    throw new Error('API error ' + res.status + ': ' + errText.slice(0,200));
+  }
+  return res.json();
+}
+
+async function send(){
+  const key = keyInput.value.trim();
+  const text = input.value.trim();
+  if(!text) return;
+  if(!key){ addTool('MISSING KEY', 'Paste a free Gemini API key at the top first.'); return; }
+  input.value = ''; input.style.height = 'auto';
+  addMsg('user', text);
+  contents.push({ role:'user', parts:[{ text }] });
+  sendBtn.disabled = true;
+
+  try {
+    let rounds = 0;
+    while(rounds < 5){
+      rounds++;
+      const data = await callGemini(key);
+      const candidate = data.candidates && data.candidates[0];
+      if(!candidate){ addTool('ERROR', 'No response from the model.'); break; }
+      const parts = candidate.content.parts || [];
+      const fnCall = parts.find(p => p.functionCall);
+      if(fnCall){
+        contents.push({ role:'model', parts:[{ functionCall: fnCall.functionCall }] });
+        const code = fnCall.functionCall.args.code || '';
+        addTool('RUNNING CODE', code);
+        const output = runJS(code);
+        addTool('OUTPUT', output);
+        contents.push({ role:'user', parts:[{ functionResponse: { name: fnCall.functionCall.name, response: { output } } }] });
+        continue;
+      }
+      const textPart = parts.find(p => p.text);
+      const replyText = textPart ? textPart.text : '(no text reply)';
+      addMsg('agent', replyText);
+      contents.push({ role:'model', parts:[{ text: replyText }] });
+      break;
+    }
+  } catch(err){
+    addTool('ERROR', err.message || String(err));
+  } finally {
+    sendBtn.disabled = false;
+  }
+}
+
+form.addEventListener('submit', e => { e.preventDefault(); send(); });
+input.addEventListener('keydown', e => { if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); } });
+input.addEventListener('input', () => { input.style.height='auto'; input.style.height = Math.min(input.scrollHeight,140)+'px'; });
+</script>
+</body>
+</html>
