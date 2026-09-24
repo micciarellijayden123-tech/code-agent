@@ -127,9 +127,9 @@ async function send(){
   agentBubble = null;
 
   try {
-    const sample = await claude.use('sample');
+    const sample = await window.claude?.use?.('sample');
     if(!sample){
-      addTool('SYSTEM', 'The sample capability isn\'t available in this view, so Forge can\'t think right now.');
+      addTool('SYSTEM', 'Forge needs Claude\'s artifact runtime to think. Open this page in claude.ai to use the coding agent.');
       sendBtn.disabled = false;
       return;
     }
