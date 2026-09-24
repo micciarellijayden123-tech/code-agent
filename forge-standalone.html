@@ -14,50 +14,77 @@
     --text:#e7e4de; --muted:#8b93a1; --accent:#e0a458; --accent2:#5fb3b3;
     --mono: ui-monospace,"SF Mono",Consolas,monospace; --sans:-apple-system,"Segoe UI",sans-serif;
   }
+  :root[data-theme="light"]{
+    --bg:#f5f3ee; --panel:#ffffff; --panel2:#edeae2; --border:#dcd7cb;
+    --text:#20242b; --muted:#6b7280; --accent:#b5793a; --accent2:#2f7d7d;
+  }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);}
   body{display:flex;flex-direction:column;overflow-x:hidden;}
   header{
-    padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;gap:10px;flex-shrink:0;flex-wrap:wrap;
-    padding-top:calc(14px + env(safe-area-inset-top,0px));
+    padding:15px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap;
+    padding-top:calc(15px + env(safe-area-inset-top,0px));
+    background:linear-gradient(180deg, var(--panel) 0%, var(--bg) 100%);
+    position:relative;
   }
-  header h1{font-size:17px;margin:0;font-weight:600;}
-  header span{color:var(--muted);font-size:12.5px;}
-  #keybar{padding:10px 16px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-shrink:0;flex-wrap:wrap;}
-  #keybar input{flex:1;min-width:140px;background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:9px 10px;font-family:var(--mono);font-size:16px;}
-  #keybar a{color:var(--accent2);font-size:12.5px;text-decoration:none;white-space:nowrap;}
+  header::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;background:linear-gradient(90deg, var(--accent), transparent 60%);opacity:.6;}
+  header h1{font-size:16.5px;margin:0;font-weight:700;letter-spacing:-0.01em;display:flex;align-items:center;gap:7px;}
+  header h1::before{content:"◆";color:var(--accent);font-size:13px;}
+  header span{color:var(--muted);font-size:12px;padding-left:1px;}
+  #settingsBtn{margin-left:auto;background:none;border:1px solid var(--border);color:var(--muted);border-radius:9px;width:38px;height:38px;min-height:38px;min-width:38px;padding:0;font-size:16px;box-shadow:none;flex-shrink:0;}
+  #settingsBtn:hover{filter:none;color:var(--text);border-color:var(--accent);}
+  #overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10;align-items:center;justify-content:center;padding:20px;}
+  #overlay.open{display:flex;}
+  #settingsPanel{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:22px;max-width:400px;width:100%;box-shadow:0 8px 30px rgba(0,0,0,.4);}
+  #settingsPanel h2{margin:0 0 4px;font-size:16px;}
+  #settingsPanel .sub{color:var(--muted);font-size:12.5px;margin-bottom:16px;}
+  #settingsPanel label{display:block;font-size:12.5px;font-weight:600;margin:16px 0 6px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;}
+  #settingsPanel input{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:10px 11px;font-family:var(--mono);font-size:15px;}
+  #settingsPanel input:focus{outline:none;border-color:var(--accent);}
+  #settingsPanel .keylink{font-size:12px;color:var(--accent2);text-decoration:none;font-weight:600;}
+  .theme-row{display:flex;gap:8px;}
+  .theme-opt{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12.5px;color:var(--text);cursor:pointer;text-align:center;box-shadow:none;min-height:auto;}
+  .theme-opt.active{border-color:var(--accent);color:var(--accent);background:var(--panel2);}
+  #settingsPanel .row{display:flex;gap:8px;margin-top:20px;}
+  #closeSettings{background:var(--panel2);color:var(--text);flex:1;}
+  #saveSettings{flex:1;}
   #log{flex:1;overflow-y:auto;overflow-x:hidden;padding:16px;max-width:720px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:12px;}
-  .msg{max-width:90%;padding:11px 14px;border-radius:10px;line-height:1.5;font-size:15px;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;}
-  .user{align-self:flex-end;background:var(--accent2);color:#0b1414;}
-  .agent{align-self:flex-start;background:var(--panel2);border:1px solid var(--border);}
-  .tool{align-self:flex-start;max-width:90%;width:100%;font-family:var(--mono);font-size:12.5px;background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--accent);padding:10px 12px;border-radius:6px;color:var(--muted);}
-  .tool b{color:var(--accent);font-family:var(--sans);font-size:11px;}
+  .msg{max-width:90%;padding:12px 15px;border-radius:14px;line-height:1.55;font-size:15px;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;box-shadow:0 1px 2px rgba(0,0,0,.18);}
+  .user{align-self:flex-end;background:var(--accent2);color:#0b1414;border-bottom-right-radius:4px;}
+  .agent{align-self:flex-start;background:var(--panel2);border:1px solid var(--border);border-bottom-left-radius:4px;}
+  .tool{align-self:flex-start;max-width:90%;width:100%;font-family:var(--mono);font-size:12.5px;background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--accent);padding:11px 13px;border-radius:8px;color:var(--muted);box-shadow:0 1px 2px rgba(0,0,0,.18);}
+  .tool b{color:var(--accent);font-family:var(--sans);font-size:11px;letter-spacing:.04em;}
   .tool pre{margin:6px 0 0;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;color:var(--text);}
-  .empty{color:var(--muted);font-size:14px;margin:auto;text-align:center;max-width:380px;}
+  .empty{color:var(--muted);font-size:14px;line-height:1.6;margin:auto;text-align:center;max-width:340px;}
+  #log::-webkit-scrollbar{width:8px;}
+  #log::-webkit-scrollbar-track{background:transparent;}
+  #log::-webkit-scrollbar-thumb{background:var(--panel2);border-radius:4px;}
+  #log::-webkit-scrollbar-thumb:hover{background:var(--border);}
   form{
-    display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--border);max-width:720px;width:100%;margin:0 auto;flex-shrink:0;
-    padding-bottom:calc(12px + env(safe-area-inset-bottom,0px));
+    display:flex;gap:9px;padding:13px 16px;border-top:1px solid var(--border);max-width:720px;width:100%;margin:0 auto;flex-shrink:0;
+    padding-bottom:calc(13px + env(safe-area-inset-bottom,0px));
+    background:var(--panel);
   }
-  textarea{flex:1;resize:none;background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:11px 12px;font-size:16px;max-height:140px;min-height:44px;}
-  textarea:focus{outline:2px solid var(--accent);}
-  button{background:var(--accent);color:#1a1206;border:none;border-radius:8px;padding:0 16px;min-height:44px;min-width:44px;font-weight:600;font-size:14px;cursor:pointer;touch-action:manipulation;}
-  button:disabled{opacity:.5;}
+  textarea{flex:1;resize:none;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:11px 13px;font-size:16px;max-height:140px;min-height:44px;transition:border-color .15s ease;}
+  textarea:focus{outline:none;border-color:var(--accent);}
+  button{background:var(--accent);color:#1a1206;border:none;border-radius:10px;padding:0 18px;min-height:44px;min-width:44px;font-weight:700;font-size:14px;cursor:pointer;touch-action:manipulation;transition:filter .15s ease, transform .1s ease;box-shadow:0 1px 3px rgba(0,0,0,.25);}
+  button:hover{filter:brightness(1.08);}
+  button:disabled{opacity:.5;filter:none;}
   button:active{transform:scale(0.97);}
-  #uploadBtn{background:var(--panel2);color:var(--text);border:1px solid var(--border);padding:0 12px;font-weight:500;font-size:17px;flex-shrink:0;}
-  #chips{display:flex;gap:6px;flex-wrap:wrap;max-width:720px;width:100%;margin:0 auto;padding:0 16px;}
+  #uploadBtn{background:var(--panel2);color:var(--text);border:1px solid var(--border);padding:0 13px;font-weight:500;font-size:17px;flex-shrink:0;box-shadow:none;}
+  #uploadBtn:hover{filter:none;background:var(--bg);}
+  #chips{display:flex;gap:6px;flex-wrap:wrap;max-width:720px;width:100%;margin:0 auto;padding:8px 16px 0;}
   #chips:empty{display:none;}
-  .chip{display:flex;align-items:center;gap:6px;background:var(--panel2);border:1px solid var(--border);border-radius:16px;padding:4px 10px 4px 12px;font-size:12.5px;color:var(--text);}
-  .chip button{background:none;border:none;color:var(--muted);padding:0;font-size:15px;line-height:1;cursor:pointer;}
-  .dl-btn{margin-top:8px;background:var(--panel);color:var(--accent2);border:1px solid var(--border);border-radius:6px;padding:7px 14px;font-size:13px;cursor:pointer;touch-action:manipulation;}
+  .chip{display:flex;align-items:center;gap:6px;background:var(--panel2);border:1px solid var(--border);border-radius:16px;padding:5px 10px 5px 13px;font-size:12.5px;color:var(--text);}
+  .chip button{background:none;border:none;color:var(--muted);padding:0;font-size:15px;line-height:1;cursor:pointer;min-height:auto;min-width:auto;box-shadow:none;}
+  .dl-btn{margin-top:9px;background:var(--bg);color:var(--accent2);border:1px solid var(--border);border-radius:7px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;touch-action:manipulation;transition:border-color .15s ease;}
+  .dl-btn:hover{border-color:var(--accent2);}
 
   @media (max-width: 480px){
     header{padding:12px 14px calc(12px + env(safe-area-inset-top,0px));}
     header{flex-direction:column;gap:2px;}
     header h1{font-size:16px;}
     header span{font-size:11.5px;}
-    #keybar{padding:8px 14px;}
-    #keybar input{width:100%;flex-basis:100%;}
-    #keybar a{margin-left:auto;}
     .msg{max-width:94%;font-size:14.5px;}
     .tool{max-width:94%;font-size:12px;}
     #send{padding:0 14px;font-size:13.5px;}
@@ -65,12 +92,31 @@
 </style>
 </head>
 <body>
-<header><h1>Forge</h1><span>standalone coding agent — runs on your own free Gemini key</span></header>
-<div id="keybar">
-  <input id="apikey" type="text" placeholder="Paste your free Gemini API key here, then click outside this box">
-  <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Get a free key →</a>
+<header>
+  <h1>Forge</h1><span>standalone coding agent</span>
+  <button type="button" id="settingsBtn" title="Settings">⚙️</button>
+</header>
+<div id="log"><div class="empty">Open Settings (⚙️ top right) to add your free Gemini API key. Then ask Forge to write and run JavaScript, or attach a file or photo for it to look at.</div></div>
+
+<div id="overlay">
+  <div id="settingsPanel">
+    <h2>Settings</h2>
+    <div class="sub">Your key stays in this browser only — it's never shown in the chat.</div>
+    <label for="apikey">Gemini API key</label>
+    <input id="apikey" type="password" placeholder="Paste your free Gemini API key">
+    <div style="margin-top:6px;"><a class="keylink" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Get a free key →</a></div>
+    <label>Theme</label>
+    <div class="theme-row">
+      <button type="button" class="theme-opt" data-theme-choice="system">System</button>
+      <button type="button" class="theme-opt" data-theme-choice="light">Light</button>
+      <button type="button" class="theme-opt" data-theme-choice="dark">Dark</button>
+    </div>
+    <div class="row">
+      <button type="button" id="closeSettings">Close</button>
+      <button type="button" id="saveSettings">Save</button>
+    </div>
+  </div>
 </div>
-<div id="log"><div class="empty">Paste a free Gemini API key above (from Google AI Studio, no card needed). Ask Forge to write and run JavaScript, or attach a file or photo for it to look at.</div></div>
 <div id="chips"></div>
 <form id="f">
   <input id="fileInput" type="file" accept="image/*,.js,.py,.html,.css,.json,.md,.txt,.jsx,.ts,.csv" multiple style="display:none">
@@ -87,6 +133,35 @@ const sendBtn = document.getElementById('send');
 const keyInput = document.getElementById('apikey');
 keyInput.value = localStorage.getItem('forge_gemini_key') || '';
 keyInput.addEventListener('input', () => localStorage.setItem('forge_gemini_key', keyInput.value.trim()));
+
+// Settings modal + theme
+const overlay = document.getElementById('overlay');
+const settingsBtn = document.getElementById('settingsBtn');
+const closeSettings = document.getElementById('closeSettings');
+const saveSettings = document.getElementById('saveSettings');
+const themeOpts = document.querySelectorAll('.theme-opt');
+let currentTheme = localStorage.getItem('forge_theme') || 'system';
+
+function applyTheme(t){
+  if(t === 'system') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', t);
+  themeOpts.forEach(b => b.classList.toggle('active', b.dataset.themeChoice === t));
+}
+applyTheme(currentTheme);
+
+themeOpts.forEach(btn => btn.addEventListener('click', () => {
+  currentTheme = btn.dataset.themeChoice;
+  localStorage.setItem('forge_theme', currentTheme);
+  applyTheme(currentTheme);
+}));
+
+settingsBtn.addEventListener('click', () => { overlay.classList.add('open'); });
+closeSettings.addEventListener('click', () => { overlay.classList.remove('open'); });
+saveSettings.addEventListener('click', () => {
+  localStorage.setItem('forge_gemini_key', keyInput.value.trim());
+  overlay.classList.remove('open');
+});
+overlay.addEventListener('click', e => { if(e.target === overlay) overlay.classList.remove('open'); });
 
 let contents = [];
 let attachments = []; // {name, mimeType, isImage, text?, base64?}
@@ -214,7 +289,7 @@ async function send(){
   const key = keyInput.value.trim() || localStorage.getItem('forge_gemini_key') || '';
   const text = input.value.trim();
   if(!text && attachments.length === 0) return;
-  if(!key){ addTool('MISSING KEY', 'Paste a free Gemini API key at the top first.'); return; }
+  if(!key){ addTool('MISSING KEY', 'Open Settings (⚙️ top right) and paste in a free Gemini API key first.'); return; }
   input.value = ''; input.style.height = 'auto';
 
   const currentAttachments = attachments.slice();
