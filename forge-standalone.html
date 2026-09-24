@@ -19,11 +19,6 @@
   #keybar{padding:10px 20px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-shrink:0;}
   #keybar input{flex:1;background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px 10px;font-family:var(--mono);font-size:12.5px;}
   #keybar a{color:var(--accent2);font-size:12.5px;text-decoration:none;white-space:nowrap;}
-  #attachments{max-width:720px;width:100%;margin:0 auto;padding:10px 20px 0;display:flex;gap:6px;flex-wrap:wrap;}
-  .attachment{display:flex;align-items:center;gap:6px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text);font-size:12px;}
-  .attachment button{background:none;color:var(--muted);padding:0;font-size:16px;line-height:1;}
-  .attachment button:hover{color:var(--error);}
-  #pick{background:var(--panel2);color:var(--text);border:1px solid var(--border);padding:0 12px;}
   #log{flex:1;overflow-y:auto;padding:20px;max-width:720px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:14px;}
   .msg{max-width:88%;padding:11px 14px;border-radius:10px;line-height:1.5;font-size:14.5px;white-space:pre-wrap;word-wrap:break-word;}
   .user{align-self:flex-end;background:var(--accent2);color:#0b1414;}
@@ -37,6 +32,12 @@
   textarea:focus{outline:2px solid var(--accent);}
   button{background:var(--accent);color:#1a1206;border:none;border-radius:8px;padding:0 18px;font-weight:600;font-size:14px;cursor:pointer;}
   button:disabled{opacity:.5;}
+  #uploadBtn{background:var(--panel2);color:var(--text);border:1px solid var(--border);padding:0 14px;font-weight:500;}
+  #chips{display:flex;gap:6px;flex-wrap:wrap;max-width:720px;width:100%;margin:0 auto;padding:0 20px;}
+  #chips:empty{display:none;}
+  .chip{display:flex;align-items:center;gap:6px;background:var(--panel2);border:1px solid var(--border);border-radius:16px;padding:4px 10px 4px 12px;font-size:12.5px;color:var(--text);}
+  .chip button{background:none;border:none;color:var(--muted);padding:0;font-size:15px;line-height:1;cursor:pointer;}
+  .dl-btn{margin-top:8px;background:var(--panel);color:var(--accent2);border:1px solid var(--border);border-radius:6px;padding:5px 12px;font-size:12.5px;cursor:pointer;}
 </style>
 </head>
 <body>
@@ -45,12 +46,12 @@
   <input id="apikey" type="text" placeholder="Paste your free Gemini API key here, then click outside this box">
   <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Get a free key →</a>
 </div>
-<div id="log"><div class="empty">Paste a free Gemini API key above (from Google AI Studio, no card needed), then ask Forge to write and run some JavaScript.</div></div>
-<div id="attachments"></div>
+<div id="log"><div class="empty">Paste a free Gemini API key above (from Google AI Studio, no card needed). Ask Forge to write and run JavaScript, or attach a file or photo for it to look at.</div></div>
+<div id="chips"></div>
 <form id="f">
-  <input id="files" type="file" hidden multiple accept="image/*,.txt,.md,.js,.jsx,.ts,.tsx,.json,.html,.css,.py,.java,.c,.cpp,.h,.csv,.xml,.yaml,.yml">
-  <button id="pick" type="button">Attach</button>
-  <textarea id="input" rows="1" placeholder="What should Forge build?"></textarea>
+  <input id="fileInput" type="file" accept="image/*,.js,.py,.html,.css,.json,.md,.txt,.jsx,.ts,.csv" multiple style="display:none">
+  <button type="button" id="uploadBtn" title="Attach a file or photo">📎</button>
+  <textarea id="input" rows="1" placeholder="What should Forge build or fix?"></textarea>
   <button id="send">Send</button>
 </form>
 
@@ -60,56 +61,72 @@ const form = document.getElementById('f');
 const input = document.getElementById('input');
 const sendBtn = document.getElementById('send');
 const keyInput = document.getElementById('apikey');
-const fileInput = document.getElementById('files');
-const pickBtn = document.getElementById('pick');
-const attachmentsEl = document.getElementById('attachments');
 keyInput.value = localStorage.getItem('forge_gemini_key') || '';
 keyInput.addEventListener('input', () => localStorage.setItem('forge_gemini_key', keyInput.value.trim()));
 
 let contents = [];
-let attachments = [];
+let attachments = []; // {name, mimeType, isImage, text?, base64?}
 const SYSTEM = "You are Forge, a coding agent. When asked to build, fix, or demonstrate something, write JavaScript "
-  + "and actually run it with the run_javascript tool before answering. Use console.log to show results. Keep prose short. "
-  + "When files are attached, inspect them carefully. For requested fixes, return the complete corrected file in a fenced code block "
-  + "with the original filename, and explain the changes. You cannot write files directly on the user's device.";
+  + "and actually run it with the run_javascript tool before answering. Use console.log to show results. "
+  + "When the user attaches a text/code file, review it and reply with the corrected version inside a single fenced "
+  + "code block. When the user attaches a photo, describe what you see and point out anything that looks wrong or "
+  + "could be improved — you cannot generate or edit images, only analyze them, so say so if asked to edit one. "
+  + "Keep prose short.";
 
-function renderAttachments(){
-  attachmentsEl.replaceChildren();
-  attachments.forEach((attachment, index) => {
-    const item = document.createElement('span');
-    item.className = 'attachment';
-    item.append(document.createTextNode(attachment.file.name));
-    const remove = document.createElement('button');
-    remove.type = 'button'; remove.title = 'Remove ' + attachment.file.name; remove.textContent = '×';
-    remove.addEventListener('click', () => { attachments.splice(index, 1); renderAttachments(); });
-    item.append(remove); attachmentsEl.append(item);
+const fileInput = document.getElementById('fileInput');
+const uploadBtn = document.getElementById('uploadBtn');
+const chips = document.getElementById('chips');
+
+uploadBtn.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', async () => {
+  for(const file of fileInput.files){
+    const isImage = file.type.startsWith('image/');
+    if(isImage){
+      const dataUrl = await new Promise(res => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(file); });
+      attachments.push({ name:file.name, mimeType:file.type, isImage:true, base64: dataUrl.split(',')[1] });
+    } else {
+      const text = await new Promise(res => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsText(file); });
+      attachments.push({ name:file.name, mimeType:file.type||'text/plain', isImage:false, text });
+    }
+  }
+  fileInput.value = '';
+  renderChips();
+});
+function renderChips(){
+  chips.innerHTML = '';
+  attachments.forEach((a, i) => {
+    const c = document.createElement('div'); c.className = 'chip';
+    const label = document.createElement('span'); label.textContent = (a.isImage?'🖼 ':'📄 ') + a.name;
+    const rm = document.createElement('button'); rm.textContent = '✕'; rm.type = 'button';
+    rm.addEventListener('click', () => { attachments.splice(i,1); renderChips(); });
+    c.appendChild(label); c.appendChild(rm);
+    chips.appendChild(c);
   });
 }
-
-pickBtn.addEventListener('click', () => fileInput.click());
-fileInput.addEventListener('change', () => {
-  attachments.push(...Array.from(fileInput.files).map(file => ({ file })));
-  renderAttachments(); fileInput.value = '';
-});
-
-async function filePart(attachment){
-  const file = attachment.file;
-  if(file.size > 8 * 1024 * 1024) throw new Error(file.name + ' is larger than 8 MB.');
-  if(file.type.startsWith('image/')){
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    let binary = ''; for(const byte of bytes) binary += String.fromCharCode(byte);
-    return { inlineData: { mimeType: file.type, data: btoa(binary) } };
-  }
-  if(file.size > 1024 * 1024) throw new Error(file.name + ' is larger than 1 MB of text.');
-  return { text: '\n--- FILE: ' + file.name + ' ---\n' + await file.text() + '\n--- END FILE ---' };
+function downloadText(filename, content){
+  const blob = new Blob([content], {type:'text/plain'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
 }
 
 function clearEmpty(){ const e = log.querySelector('.empty'); if(e) e.remove(); }
-function addMsg(role, text){
+function addMsg(role, text, downloadName){
   clearEmpty();
   const d = document.createElement('div');
   d.className = 'msg ' + role;
   d.textContent = text;
+  const match = text.match(/```[a-zA-Z]*\n([\s\S]*?)```/);
+  if(role === 'agent' && match){
+    const btn = document.createElement('button');
+    btn.className = 'dl-btn'; btn.type = 'button';
+    btn.textContent = 'Download fixed file';
+    btn.addEventListener('click', () => downloadText(downloadName || 'fixed.txt', match[1]));
+    d.appendChild(document.createElement('br'));
+    d.appendChild(btn);
+  }
   log.appendChild(d); log.scrollTop = log.scrollHeight;
   return d;
 }
@@ -161,19 +178,28 @@ async function callGemini(key){
 async function send(){
   const key = keyInput.value.trim() || localStorage.getItem('forge_gemini_key') || '';
   const text = input.value.trim();
-  if(!text && !attachments.length) return;
+  if(!text && attachments.length === 0) return;
   if(!key){ addTool('MISSING KEY', 'Paste a free Gemini API key at the top first.'); return; }
   input.value = ''; input.style.height = 'auto';
-  const attachedNames = attachments.map(attachment => attachment.file.name);
-  addMsg('user', (text || 'Please inspect the attached files.') + (attachedNames.length ? '\nAttached: ' + attachedNames.join(', ') : ''));
+
+  const currentAttachments = attachments.slice();
+  attachments = []; renderChips();
+  const lastFileName = currentAttachments.filter(a => !a.isImage).slice(-1)[0]?.name;
+
+  const parts = [];
+  currentAttachments.forEach(a => {
+    if(a.isImage) parts.push({ inlineData: { mimeType: a.mimeType, data: a.base64 } });
+    else parts.push({ text: 'File "' + a.name + '":\n```\n' + a.text + '\n```' });
+  });
+  const promptText = text || (currentAttachments.some(a=>a.isImage) ? 'Take a look at this photo and tell me what you notice.' : 'Please review this file and fix any issues.');
+  parts.push({ text: promptText });
+
+  const summary = currentAttachments.map(a => (a.isImage?'📎 ':'📄 ') + a.name).join('  ') + (text ? (currentAttachments.length?'\n':'') + text : '');
+  addMsg('user', summary || text);
+  contents.push({ role:'user', parts });
   sendBtn.disabled = true;
 
   try {
-    const parts = [];
-    if(text) parts.push({ text });
-    for(const attachment of attachments) parts.push(await filePart(attachment));
-    contents.push({ role:'user', parts });
-    attachments = []; renderAttachments();
     let rounds = 0;
     while(rounds < 5){
       rounds++;
@@ -193,7 +219,7 @@ async function send(){
       }
       const textPart = parts.find(p => p.text);
       const replyText = textPart ? textPart.text : '(no text reply)';
-      addMsg('agent', replyText);
+      addMsg('agent', replyText, lastFileName ? 'fixed-' + lastFileName : undefined);
       contents.push(candidate.content);
       break;
     }
