@@ -19,6 +19,11 @@
   #keybar{padding:10px 20px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-shrink:0;}
   #keybar input{flex:1;background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px 10px;font-family:var(--mono);font-size:12.5px;}
   #keybar a{color:var(--accent2);font-size:12.5px;text-decoration:none;white-space:nowrap;}
+  #attachments{max-width:720px;width:100%;margin:0 auto;padding:10px 20px 0;display:flex;gap:6px;flex-wrap:wrap;}
+  .attachment{display:flex;align-items:center;gap:6px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text);font-size:12px;}
+  .attachment button{background:none;color:var(--muted);padding:0;font-size:16px;line-height:1;}
+  .attachment button:hover{color:var(--error);}
+  #pick{background:var(--panel2);color:var(--text);border:1px solid var(--border);padding:0 12px;}
   #log{flex:1;overflow-y:auto;padding:20px;max-width:720px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:14px;}
   .msg{max-width:88%;padding:11px 14px;border-radius:10px;line-height:1.5;font-size:14.5px;white-space:pre-wrap;word-wrap:break-word;}
   .user{align-self:flex-end;background:var(--accent2);color:#0b1414;}
@@ -41,7 +46,10 @@
   <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Get a free key →</a>
 </div>
 <div id="log"><div class="empty">Paste a free Gemini API key above (from Google AI Studio, no card needed), then ask Forge to write and run some JavaScript.</div></div>
+<div id="attachments"></div>
 <form id="f">
+  <input id="files" type="file" hidden multiple accept="image/*,.txt,.md,.js,.jsx,.ts,.tsx,.json,.html,.css,.py,.java,.c,.cpp,.h,.csv,.xml,.yaml,.yml">
+  <button id="pick" type="button">Attach</button>
   <textarea id="input" rows="1" placeholder="What should Forge build?"></textarea>
   <button id="send">Send</button>
 </form>
@@ -52,12 +60,49 @@ const form = document.getElementById('f');
 const input = document.getElementById('input');
 const sendBtn = document.getElementById('send');
 const keyInput = document.getElementById('apikey');
+const fileInput = document.getElementById('files');
+const pickBtn = document.getElementById('pick');
+const attachmentsEl = document.getElementById('attachments');
 keyInput.value = localStorage.getItem('forge_gemini_key') || '';
 keyInput.addEventListener('input', () => localStorage.setItem('forge_gemini_key', keyInput.value.trim()));
 
 let contents = [];
+let attachments = [];
 const SYSTEM = "You are Forge, a coding agent. When asked to build, fix, or demonstrate something, write JavaScript "
-  + "and actually run it with the run_javascript tool before answering. Use console.log to show results. Keep prose short.";
+  + "and actually run it with the run_javascript tool before answering. Use console.log to show results. Keep prose short. "
+  + "When files are attached, inspect them carefully. For requested fixes, return the complete corrected file in a fenced code block "
+  + "with the original filename, and explain the changes. You cannot write files directly on the user's device.";
+
+function renderAttachments(){
+  attachmentsEl.replaceChildren();
+  attachments.forEach((attachment, index) => {
+    const item = document.createElement('span');
+    item.className = 'attachment';
+    item.append(document.createTextNode(attachment.file.name));
+    const remove = document.createElement('button');
+    remove.type = 'button'; remove.title = 'Remove ' + attachment.file.name; remove.textContent = '×';
+    remove.addEventListener('click', () => { attachments.splice(index, 1); renderAttachments(); });
+    item.append(remove); attachmentsEl.append(item);
+  });
+}
+
+pickBtn.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', () => {
+  attachments.push(...Array.from(fileInput.files).map(file => ({ file })));
+  renderAttachments(); fileInput.value = '';
+});
+
+async function filePart(attachment){
+  const file = attachment.file;
+  if(file.size > 8 * 1024 * 1024) throw new Error(file.name + ' is larger than 8 MB.');
+  if(file.type.startsWith('image/')){
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    let binary = ''; for(const byte of bytes) binary += String.fromCharCode(byte);
+    return { inlineData: { mimeType: file.type, data: btoa(binary) } };
+  }
+  if(file.size > 1024 * 1024) throw new Error(file.name + ' is larger than 1 MB of text.');
+  return { text: '\n--- FILE: ' + file.name + ' ---\n' + await file.text() + '\n--- END FILE ---' };
+}
 
 function clearEmpty(){ const e = log.querySelector('.empty'); if(e) e.remove(); }
 function addMsg(role, text){
@@ -116,14 +161,19 @@ async function callGemini(key){
 async function send(){
   const key = keyInput.value.trim() || localStorage.getItem('forge_gemini_key') || '';
   const text = input.value.trim();
-  if(!text) return;
+  if(!text && !attachments.length) return;
   if(!key){ addTool('MISSING KEY', 'Paste a free Gemini API key at the top first.'); return; }
   input.value = ''; input.style.height = 'auto';
-  addMsg('user', text);
-  contents.push({ role:'user', parts:[{ text }] });
+  const attachedNames = attachments.map(attachment => attachment.file.name);
+  addMsg('user', (text || 'Please inspect the attached files.') + (attachedNames.length ? '\nAttached: ' + attachedNames.join(', ') : ''));
   sendBtn.disabled = true;
 
   try {
+    const parts = [];
+    if(text) parts.push({ text });
+    for(const attachment of attachments) parts.push(await filePart(attachment));
+    contents.push({ role:'user', parts });
+    attachments = []; renderAttachments();
     let rounds = 0;
     while(rounds < 5){
       rounds++;
