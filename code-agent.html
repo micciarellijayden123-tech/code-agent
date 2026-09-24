@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Forge — a coding agent</title>
+<style>
+  :root{
+    --bg:#12151a; --panel:#181c23; --panel2:#1f242c; --border:#2a303a;
+    --text:#e7e4de; --muted:#8b93a1; --accent:#e0a458; --accent2:#5fb3b3;
+    --error:#d9666a; --mono: ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+    --sans: -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){
+      --bg:#f5f3ee; --panel:#ffffff; --panel2:#edeae2; --border:#dcd7cb;
+      --text:#20242b; --muted:#6b7280; --accent:#b5793a; --accent2:#2f7d7d;
+    }
+  }
+  :root[data-theme="dark"]{ --bg:#12151a; --panel:#181c23; --panel2:#1f242c; --border:#2a303a; --text:#e7e4de; }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);}
+  body{display:flex;flex-direction:column;}
+  header{
+    padding:16px 20px; border-bottom:1px solid var(--border);
+    display:flex; align-items:baseline; gap:10px; flex-shrink:0;
+    padding-top:calc(16px + env(safe-area-inset-top,0px));
+  }
+  header h1{font-size:17px;margin:0;font-weight:600;letter-spacing:-0.01em;}
+  header span{color:var(--muted);font-size:13px;}
+  #log{
+    flex:1; overflow-y:auto; padding:20px; max-width:720px; width:100%;
+    margin:0 auto; display:flex; flex-direction:column; gap:14px;
+  }
+  .msg{max-width:88%; padding:11px 14px; border-radius:10px; line-height:1.5; font-size:14.5px; white-space:pre-wrap; word-wrap:break-word;}
+  .user{align-self:flex-end; background:var(--accent2); color:#0b1414;}
+  .agent{align-self:flex-start; background:var(--panel2); border:1px solid var(--border);}
+  .tool{align-self:flex-start; max-width:88%; font-family:var(--mono); font-size:12.5px;
+    background:var(--panel); border:1px solid var(--border); border-left:3px solid var(--accent);
+    padding:10px 12px; border-radius:6px; color:var(--muted); overflow-x:auto;}
+  .tool b{color:var(--accent); font-family:var(--sans); font-size:11px; letter-spacing:.02em;}
+  .tool pre{margin:6px 0 0; white-space:pre-wrap; color:var(--text);}
+  .empty{color:var(--muted); font-size:14px; margin:auto; text-align:center; max-width:360px;}
+  form{
+    display:flex; gap:8px; padding:14px 20px; border-top:1px solid var(--border);
+    max-width:720px; width:100%; margin:0 auto; flex-shrink:0;
+  }
+  textarea{
+    flex:1; resize:none; background:var(--panel); border:1px solid var(--border); color:var(--text);
+    border-radius:8px; padding:10px 12px; font-family:var(--sans); font-size:14.5px; line-height:1.4;
+    max-height:140px;
+  }
+  textarea:focus{outline:2px solid var(--accent); outline-offset:1px;}
+  button{
+    background:var(--accent); color:#1a1206; border:none; border-radius:8px; padding:0 18px;
+    font-weight:600; font-size:14px; cursor:pointer;
+  }
+  button:disabled{opacity:.5; cursor:default;}
+  button:focus-visible{outline:2px solid var(--text); outline-offset:2px;}
+</style>
+</head>
+<body>
+<header><h1>Forge</h1><span>a coding agent that writes and runs JavaScript</span></header>
+<div id="log"><div class="empty">Ask it to build something — "write a function that reverses a string and test it" — and watch it write and run the code itself.</div></div>
+<form id="f">
+  <textarea id="input" rows="1" placeholder="What should Forge build?"></textarea>
+  <button id="send">Send</button>
+</form>
+
+<script>
+const log = document.getElementById('log');
+const form = document.getElementById('f');
+const input = document.getElementById('input');
+const sendBtn = document.getElementById('send');
+let history = [];
+let agentBubble = null;
+
+const SYSTEM = "You are Forge, a coding agent. When asked to build, fix, or demonstrate something, "
+  + "write JavaScript and actually run it with the run_javascript tool before answering — never just "
+  + "describe code without executing it when execution is possible. Use console.log to show results. "
+  + "Keep prose replies short and focus on what the code did. If a request has nothing to do with code, answer briefly.";
+
+function clearEmpty(){ const e = log.querySelector('.empty'); if(e) e.remove(); }
+function addMsg(role, text){
+  clearEmpty();
+  const d = document.createElement('div');
+  d.className = 'msg ' + role;
+  d.textContent = text;
+  log.appendChild(d);
+  log.scrollTop = log.scrollHeight;
+  return d;
+}
+function addTool(label, body){
+  clearEmpty();
+  const d = document.createElement('div');
+  d.className = 'tool';
+  const b = document.createElement('b'); b.textContent = label;
+  const pre = document.createElement('pre'); pre.textContent = body;
+  d.appendChild(b); d.appendChild(pre);
+  log.appendChild(d);
+  log.scrollTop = log.scrollHeight;
+}
+
+function runJS(code){
+  const logs = [];
+  const fakeConsole = { log: (...a) => logs.push(a.map(x => typeof x === 'object' ? JSON.stringify(x) : String(x)).join(' ')) };
+  try {
+    const fn = new Function('console', code);
+    const ret = fn(fakeConsole);
+    let out = logs.join('\n');
+    if (ret !== undefined) out += (out ? '\n' : '') + '=> ' + (typeof ret === 'object' ? JSON.stringify(ret) : String(ret));
+    return out || '(no output)';
+  } catch(e) {
+    return 'Error: ' + e.message;
+  }
+}
+
+async function send(){
+  const text = input.value.trim();
+  if(!text) return;
+  input.value = '';
+  input.style.height = 'auto';
+  addMsg('user', text);
+  history.push({role:'user', content:text});
+  sendBtn.disabled = true;
+  agentBubble = null;
+
+  try {
+    const sample = await claude.use('sample');
+    if(!sample){
+      addTool('SYSTEM', 'The sample capability isn\'t available in this view, so Forge can\'t think right now.');
+      sendBtn.disabled = false;
+      return;
+    }
+    const messages = [{role:'user', content: SYSTEM}, {role:'assistant', content:'Understood.'}, ...history];
+    const result = await sample(messages, {
+      tools: [{
+        name: 'run_javascript',
+        description: 'Execute a snippet of JavaScript and return its console output / return value.',
+        inputSchema: { type:'object', properties:{ code:{ type:'string', description:'JavaScript source to run.' } }, required:['code'] },
+        execute: async ({code}) => {
+          addTool('RUNNING CODE', code);
+          const output = runJS(code);
+          addTool('OUTPUT', output);
+          return { output };
+        }
+      }],
+      onText: ({text}) => {
+        if(!agentBubble) agentBubble = addMsg('agent', text);
+        else agentBubble.textContent = text;
+        log.scrollTop = log.scrollHeight;
+      }
+    });
+    history.push({role:'assistant', content: result.text});
+  } catch(err) {
+    addTool('ERROR', (err && err.message) ? err.message : String(err));
+  } finally {
+    sendBtn.disabled = false;
+  }
+}
+
+form.addEventListener('submit', e => { e.preventDefault(); send(); });
+input.addEventListener('keydown', e => {
+  if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); send(); }
+});
+input.addEventListener('input', () => {
+  input.style.height = 'auto';
+  input.style.height = Math.min(input.scrollHeight, 140) + 'px';
+});
+</script>
+</body>
+</html>
