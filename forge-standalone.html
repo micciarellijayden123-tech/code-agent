@@ -133,7 +133,9 @@ async function send(){
       const parts = candidate.content.parts || [];
       const fnCall = parts.find(p => p.functionCall);
       if(fnCall){
-        contents.push({ role:'model', parts:[{ functionCall: fnCall.functionCall }] });
+        const modelPart = { functionCall: fnCall.functionCall };
+        if(fnCall.thoughtSignature) modelPart.thoughtSignature = fnCall.thoughtSignature;
+        contents.push({ role:'model', parts:[modelPart] });
         const code = fnCall.functionCall.args.code || '';
         addTool('RUNNING CODE', code);
         const output = runJS(code);
